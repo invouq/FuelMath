@@ -1,0 +1,6 @@
+{
+  "name": "FuelMath",
+  "description": "An elegant converter to translate fuel prices between local currencies (USD, CAD, MXN, including cents) and units (liters, U.S. gallons, imperial gallons) with live daily exchange rates and offline support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

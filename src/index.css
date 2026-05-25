@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Elegant light theme backgrounds & scrollbar rules */
+body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+/* Slim scrollbars for side panels */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Android device frame styling shadows */
+.shadow-smartphone {
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.12), 
+              0 12px 30px -10px rgba(15, 23, 42, 0.08),
+              inset 0 0 2px 1px rgba(255, 255, 255, 0.2);
+}
+
+.shadow-clean-card {
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.02),
+              0 2px 8px -1px rgba(15, 23, 42, 0.03);
+}
+
+/* Pulse keyframes for synced badge */
+@keyframes syncPulse {
+  0%, 100% { opacity: 0.95; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.95); }
+}
+
+.animate-pulse-sync {
+  animation: syncPulse 2.5s infinite ease-in-out;
+}
