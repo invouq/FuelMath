@@ -1,5 +1,12 @@
-## What It Is
-This app converts fuel prices in one local currency (U.S. Dollar, Canadian Dollar, Mexican Peso) & units (U.S. gallons, imperial gallons, or liters) to another currency in the same or other units. The app uses a publicly available API to determine the currency exchange rate.
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
+
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/99228a1c-e3f8-430e-a9c3-5eb75cee0fb0
 
 ## Run Locally
 
