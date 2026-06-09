@@ -7,21 +7,15 @@ import {
   WifiOff, 
   Globe, 
   Smartphone, 
-  Info, 
   Sliders, 
-  Coins, 
   TrendingUp, 
   ChevronRight, 
   RotateCcw,
   Check,
   Percent,
-  Calculator,
   Grid,
-  Sparkles,
   Zap,
-  CheckCircle2,
-  Lock,
-  LockOpen
+  CheckCircle2
 } from 'lucide-react';
 import { Currency, FuelUnit, ExchangeRates, CachedData } from './types';
 import { 
@@ -31,19 +25,53 @@ import {
   convertFuelPrice, 
   fetchExchangeRates, 
   formatLastUpdatedDate, 
-  formatFuelPrice, 
-  CONVERSION_PRESETS 
+  formatFuelPrice 
 } from './utils';
 
 export default function App() {
-  // Input State
-  const [inputValue, setInputValue] = useState<string>('150.9');
-  const [inputCurrency, setInputCurrency] = useState<Currency>('CAD_CENTS');
-  const [inputUnit, setInputUnit] = useState<FuelUnit>('L');
+  // Available 3 specific options with automatic storage retrieval
+  const OPTIONS = [
+    { id: 'CAD_L' as const, label: '¢(CAD)/L', currency: 'CAD_CENTS' as const, unit: 'L' as const },
+    { id: 'USD_GAL' as const, label: '$USD/Gal (US)', currency: 'USD' as const, unit: 'US_GAL' as const },
+    { id: 'MXN_L' as const, label: 'MEX$/L', currency: 'MXN' as const, unit: 'L' as const }
+  ];
 
-  // Custom targets state
-  const [targetCurrency, setTargetCurrency] = useState<Currency>('USD');
-  const [targetUnit, setTargetUnit] = useState<FuelUnit>('US_GAL');
+  const [selectedOptionId, setSelectedOptionId] = useState<'CAD_L' | 'USD_GAL' | 'MXN_L'>(() => {
+    try {
+      const saved = localStorage.getItem('fuel_converter_selected_option');
+      if (saved === 'CAD_L' || saved === 'USD_GAL' || saved === 'MXN_L') {
+        return saved;
+      }
+    } catch (e) {}
+    return 'CAD_L';
+  });
+
+  const [inputValue, setInputValue] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('fuel_converter_input_value');
+      if (saved !== null) {
+        return saved;
+      }
+    } catch (e) {}
+    return '150.9';
+  });
+
+  const currentOption = OPTIONS.find(o => o.id === selectedOptionId) || OPTIONS[0];
+  const inputCurrency = currentOption.currency;
+  const inputUnit = currentOption.unit;
+
+  // Persist selections whenever they modify
+  useEffect(() => {
+    try {
+      localStorage.setItem('fuel_converter_selected_option', selectedOptionId);
+    } catch (e) {}
+  }, [selectedOptionId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fuel_converter_input_value', inputValue);
+    } catch (e) {}
+  }, [inputValue]);
 
   // Exchange rates state
   const [rates, setRates] = useState<ExchangeRates>(DEFAULT_EXCHANGE_RATES);
@@ -55,15 +83,8 @@ export default function App() {
   // Connection mode simulation
   const [simulatedOffline, setSimulatedOffline] = useState<boolean>(false);
 
-  // Manual Sandbox adjustments
-  const [isSandboxMode, setIsSandboxMode] = useState<boolean>(false);
-  const [sandboxCad, setSandboxCad] = useState<number>(1.412);
-  const [sandboxMxn, setSandboxMxn] = useState<number>(20.15);
-
   // Active rates being used for calculation
-  const activeRates: ExchangeRates = isSandboxMode 
-    ? { USD: 1.0, CAD: sandboxCad, MXN: sandboxMxn }
-    : rates;
+  const activeRates: ExchangeRates = rates;
 
   // Track simulated phone theme
   const [phoneColor, setPhoneColor] = useState<'slate' | 'violet' | 'emerald'>('slate');
@@ -101,8 +122,6 @@ export default function App() {
         // If cache is fresh (< 24 hrs), use cached data
         if (ageInMs < oneDayInMs) {
           setRates(parsed.rates);
-          setSandboxCad(parsed.rates.CAD);
-          setSandboxMxn(parsed.rates.MXN);
           setLastUpdated(parsed.lastUpdated);
           setIsOfflineCached(true);
           useCache = true;
@@ -115,8 +134,6 @@ export default function App() {
       if (!useCache) {
         const freshData = await fetchExchangeRates();
         setRates(freshData.rates);
-        setSandboxCad(freshData.rates.CAD);
-        setSandboxMxn(freshData.rates.MXN);
         setLastUpdated(freshData.lastUpdated);
         setIsOfflineCached(false);
         // Persist to cache
@@ -129,16 +146,12 @@ export default function App() {
       if (cached) {
         const parsed: CachedData = JSON.parse(cached);
         setRates(parsed.rates);
-        setSandboxCad(parsed.rates.CAD);
-        setSandboxMxn(parsed.rates.MXN);
         setLastUpdated(parsed.lastUpdated);
         setIsOfflineCached(true);
         setErrorStatus('Network request failed. Using stored cached rates.');
       } else {
         // use compile-time defaults
         setRates(DEFAULT_EXCHANGE_RATES);
-        setSandboxCad(DEFAULT_EXCHANGE_RATES.CAD);
-        setSandboxMxn(DEFAULT_EXCHANGE_RATES.MXN);
         setLastUpdated('May 24, 2026, 09:30 PM UTC (Built-in Fallback)');
         setIsOfflineCached(true);
         setErrorStatus('Offline and no cached data found. Using built-in rates.');
@@ -153,14 +166,6 @@ export default function App() {
     loadRates();
   }, []);
 
-  // Sync sandbox with loaded rates when sandbox is off
-  useEffect(() => {
-    if (!isSandboxMode) {
-      setSandboxCad(rates.CAD);
-      setSandboxMxn(rates.MXN);
-    }
-  }, [rates, isSandboxMode]);
-
   // Adjust rates when simulated offline status changes
   useEffect(() => {
     if (simulatedOffline) {
@@ -174,29 +179,8 @@ export default function App() {
 
   const numericPrice = parseFloat(inputValue) || 0;
 
-  // Quick conversions requested by user:
-  // Convert current input to USD per US Gallon
-  const convertedToUSDPerUSGal = convertFuelPrice(
-    numericPrice,
-    inputCurrency,
-    inputUnit,
-    'USD',
-    'US_GAL',
-    activeRates
-  );
-
-  // Convert current input to Mexican Pesos per Liter
-  const convertedToMXNPerLiter = convertFuelPrice(
-    numericPrice,
-    inputCurrency,
-    inputUnit,
-    'MXN',
-    'L',
-    activeRates
-  );
-
-  // CAD Cents per Liter
-  const convertedToCADCentsPerLiter = convertFuelPrice(
+  // Simultaneous conversion results for all three main options
+  const convertedCAD_L = convertFuelPrice(
     numericPrice,
     inputCurrency,
     inputUnit,
@@ -205,22 +189,25 @@ export default function App() {
     activeRates
   );
 
-  // Convertible list for custom targets
-  const customConvertedResult = convertFuelPrice(
+  const convertedUSD_GAL = convertFuelPrice(
     numericPrice,
     inputCurrency,
     inputUnit,
-    targetCurrency,
-    targetUnit,
+    'USD',
+    'US_GAL',
     activeRates
   );
 
-  // Quick preset loader helper
-  const applyPreset = (preset: typeof CONVERSION_PRESETS[0]) => {
-    setInputValue(preset.testVal.toString());
-    setInputCurrency(preset.fromCurrency);
-    setInputUnit(preset.fromUnit);
-  };
+  const convertedMXN_L = convertFuelPrice(
+    numericPrice,
+    inputCurrency,
+    inputUnit,
+    'MXN',
+    'L',
+    activeRates
+  );
+
+
 
   // Build simulated status bar time
   const [deviceTime, setDeviceTime] = useState('21:50');
@@ -314,103 +301,6 @@ export default function App() {
   // ==========================================
   // VIEW RENDERERS (To prevent duplication)
   // ==========================================
-
-  // 1. Interactive Presets Section
-  const renderPresetsSection = () => {
-    return (
-      <div className="bg-white border border-slate-100 rounded-[2rem] p-8 shadow-clean-card text-slate-900">
-        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
-          <Sparkles className="h-4 w-4 text-slate-905" />
-          Quick Highway Value Presets
-        </h2>
-        <p className="text-xs text-slate-400 leading-relaxed mb-6">
-          Click any realistic preset from Canadian, U.S., or Mexican major trans-border corridors to instantly pre-fill the calculator:
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {CONVERSION_PRESETS.map((preset, index) => {
-            const isActive = 
-              inputValue === preset.testVal.toString() && 
-              inputCurrency === preset.fromCurrency && 
-              inputUnit === preset.fromUnit;
-
-            return (
-              <button
-                key={index}
-                onClick={() => applyPreset(preset)}
-                className={`p-4 rounded-2xl text-left border transition-all duration-300 ${
-                  isActive 
-                    ? 'bg-slate-900 border-transparent text-white shadow-sm scale-[1.02]' 
-                    : 'bg-[#F8FAFC] border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-805'
-                }`}
-              >
-                <div className={`font-bold text-xs ${isActive ? 'text-white' : 'text-slate-900'}`}>
-                  {preset.testVal} {CURRENCY_CONFIGS[preset.fromCurrency].symbol} / {UNIT_CONFIGS[preset.fromUnit].symbol}
-                </div>
-                <div className={`text-[10px] mt-1.5 leading-snug truncate ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
-                  {preset.label}
-                </div>
-                <div className={`mt-3.5 text-[10px] font-semibold inline-flex items-center gap-0.5 ${isActive ? 'text-white' : 'text-slate-600'}`}>
-                  Load preset <ChevronRight className="h-3 w-3" />
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  // 2. Calculations Breakdown Section
-  const renderCalculationsSection = () => {
-    return (
-      <div className="bg-white border border-slate-100 rounded-[2rem] p-8 shadow-clean-card text-slate-900">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-            <Calculator className="h-4 w-4 text-slate-905" />
-            Live Math Expression Builder
-          </h2>
-          <span className="text-[10px] font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
-            Liters normalize math checks
-          </span>
-        </div>
-
-        <p className="text-xs text-slate-500 leading-relaxed mb-4">
-          Here is the exact step-by-step math showing how 
-          <span className="text-slate-900 font-mono font-bold mx-1">
-            {numericPrice} {CURRENCY_CONFIGS[inputCurrency].symbol}/{UNIT_CONFIGS[inputUnit].symbol}
-          </span>
-          translates globally under active currency coefficients and standard liquid weights:
-        </p>
-
-        <div className="space-y-4 text-xs">
-          <div className="p-4 bg-[#F8FAFC] rounded-2xl border border-slate-100/90 font-mono text-[11px] text-slate-700 space-y-2">
-            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Normalized Step Flow</div>
-            <div className="leading-relaxed">{steps.step1Explanation}</div>
-            <div className="leading-relaxed mt-2 pt-2 border-t border-slate-200/60">{steps.step2Explanation}</div>
-            <div className="leading-relaxed mt-2 pt-2 border-t border-slate-200/60">{steps.step3Explanation}</div>
-          </div>
-
-          <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl text-slate-800 space-y-2.5">
-            <div className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              Statutory Output Verification
-            </div>
-            <div className="text-[11px] font-mono space-y-2 text-slate-705">
-              <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
-                <p className="text-[10px] text-emerald-700 font-bold uppercase mb-0.5">U.S. Conversion Formula:</p>
-                {steps.stepUSDGalExplanation}
-              </div>
-              <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
-                <p className="text-[10px] text-emerald-700 font-bold uppercase mb-0.5">Mexican Conversion Formula:</p>
-                {steps.stepMXNLitExplanation}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // 3. Comparative Fuel Matrix
   const renderMatrixSection = () => {
@@ -508,166 +398,7 @@ export default function App() {
     );
   };
 
-  // 4. Forex Coefficient Settings
-  const renderSandboxSection = () => {
-    return (
-      <div className="bg-white border border-slate-100 rounded-[2rem] p-8 shadow-clean-card space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <Coins className="h-4.5 w-4.5 text-slate-905" />
-              Forex Coefficient Settings
-            </h3>
-            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-              View default once-daily rates or toggle Sandbox mode to force custom exchange coefficients.
-            </p>
-          </div>
 
-          <button
-            onClick={() => setIsSandboxMode(!isSandboxMode)}
-            className={`text-xs px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-colors ${
-              isSandboxMode 
-                ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-xs' 
-                : 'bg-[#F8FAFC] hover:bg-slate-100 text-slate-650 border border-slate-200'
-            }`}
-          >
-            {isSandboxMode ? (
-              <>
-                <LockOpen className="h-3 w-3" />
-                Sandbox Override Active
-              </>
-            ) : (
-              <>
-                <Lock className="h-3 w-3" />
-                Lock Live Rates
-              </>
-            )}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-5 bg-[#F8FAFC] rounded-2xl border border-slate-100/95 space-y-3">
-            <div className="flex items-center justify-between text-xs text-slate-700">
-              <span className="font-bold flex items-center gap-1">
-                🇨🇦 CAD / USD rate
-              </span>
-              <span className="font-mono text-slate-905 font-extrabold bg-white px-2.5 py-1 rounded border border-slate-200">
-                1 USD = {isSandboxMode ? sandboxCad.toFixed(4) : rates.CAD.toFixed(4)} CAD
-              </span>
-            </div>
-            
-            {isSandboxMode ? (
-              <div className="space-y-1.5 pt-1.5">
-                <input 
-                  type="range" 
-                  min="1.10" 
-                  max="2.00" 
-                  step="0.001"
-                  value={sandboxCad}
-                  onChange={(e) => setSandboxCad(parseFloat(e.target.value))}
-                  className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-slate-900"
-                />
-                <div className="flex justify-between text-[9px] text-slate-400 font-mono">
-                  <span>1.10 USD CAD Floor</span>
-                  <span>2.00 USD CAD Peak</span>
-                </div>
-              </div>
-            ) : (
-              <p className="text-[10px] text-slate-400 italic">
-                Live source current rate cached securely. Unlock sandbox above to modify coefficients here.
-              </p>
-            )}
-          </div>
-
-          <div className="p-5 bg-[#F8FAFC] rounded-2xl border border-slate-100/95 space-y-3">
-            <div className="flex items-center justify-between text-xs text-slate-700">
-              <span className="font-bold flex items-center gap-1">
-                🇲🇽 MXN / USD rate
-              </span>
-              <span className="font-mono text-slate-905 font-extrabold bg-white px-2.5 py-1 rounded border border-slate-200">
-                1 USD = {isSandboxMode ? sandboxMxn.toFixed(4) : rates.MXN.toFixed(4)} MXN
-              </span>
-            </div>
-
-            {isSandboxMode ? (
-              <div className="space-y-1.5 pt-1.5">
-                <input 
-                  type="range" 
-                  min="15.00" 
-                  max="25.00" 
-                  step="0.01"
-                  value={sandboxMxn}
-                  onChange={(e) => setSandboxMxn(parseFloat(e.target.value))}
-                  className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-slate-900"
-                />
-                <div className="flex justify-between text-[9px] text-slate-400 font-mono">
-                  <span>15.00 MXN / USD</span>
-                  <span>25.00 MXN / USD</span>
-                </div>
-              </div>
-            ) : (
-              <p className="text-[10px] text-slate-400 italic">
-                Live source current rate cached securely. Unlock sandbox above to modify coefficients here.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {isSandboxMode && (
-          <div className="flex justify-end pt-1">
-            <button
-              onClick={() => {
-                setSandboxCad(rates.CAD);
-                setSandboxMxn(rates.MXN);
-                setIsSandboxMode(false);
-              }}
-              className="text-[10px] text-slate-500 hover:text-slate-900 flex items-center gap-1.5 bg-[#F8FAFC] px-3.5 py-1.5 rounded-xl border border-slate-200 transition-colors font-semibold"
-            >
-              <RotateCcw className="h-3 w-3" />
-              Reset to Live Cache rates
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // 5. Automated Caching Mechanics / Info Box
-  const renderInfoBoxSection = () => {
-    return (
-      <div className="p-6 bg-[#F8FAFC] border border-slate-200/60 rounded-[2rem] flex items-start gap-4">
-        <div className="p-2.5 bg-slate-900 rounded-xl text-white shrink-0">
-          <Info className="h-4 w-4" />
-        </div>
-        <div>
-          <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest">
-            Automated Caching Mechanics
-          </h4>
-          <p className="text-xs text-slate-500 leading-relaxed mt-1.5">
-            This app runs offline-safe! It automatically caches the once-daily converted exchange factors upon first launch and will refresh rates safely only when the internet is active. Dates are parsed in standard UTC format with a prominent label identifying local refresh states.
-          </p>
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] text-slate-600 font-medium">
-            <div className="flex items-center gap-1.5">
-              <Check className="h-3.5 w-3.5 text-slate-905" />
-              1 U.S. Gallon = 3.78541 Liters
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Check className="h-3.5 w-3.5 text-slate-905" />
-              1 Imperial Gallon = 4.54609 Liters
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Check className="h-3.5 w-3.5 text-slate-905" />
-              Canadian Cents Subunit Division
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Check className="h-3.5 w-3.5 text-slate-905" />
-              MacBook M2 layout-optimized
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-slate-900 selection:text-white pb-16 animate-fade-in">
@@ -802,167 +533,119 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* currency buttons */}
+                {/* Simplified Input Unit/Currency selector */}
                 <div className="mt-4">
                   <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1.5">
-                    Source Currency
+                    Input Format
                   </span>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {Object.values(CURRENCY_CONFIGS).filter(curr => curr.id !== 'CAD').map((curr) => (
+                  <div className="grid grid-cols-3 gap-1.5 animate-fade-in">
+                    {OPTIONS.map((opt) => (
                       <button
-                        key={curr.id}
-                        onClick={() => {
-                          setInputCurrency(curr.id);
-                          if (curr.id === 'CAD_CENTS') {
-                            setInputUnit('L');
-                          }
-                        }}
-                        className={`px-3 py-2 rounded-xl text-left text-xs flex flex-col justify-between transition-colors ${
-                          inputCurrency === curr.id 
+                        key={opt.id}
+                        onClick={() => setSelectedOptionId(opt.id)}
+                        className={`py-2 px-1 rounded-xl text-center text-xs font-bold transition-all ${
+                          selectedOptionId === opt.id 
                             ? 'bg-slate-900 border-transparent text-white shadow-sm' 
-                            : 'bg-slate-50 border border-slate-250 hover:bg-slate-100 text-slate-600'
+                            : 'bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-650'
                         }`}
                       >
-                        <span className="font-bold text-xs">{curr.symbol} ({curr.id === 'CAD_CENTS' ? 'CAD' : curr.id})</span>
-                        <span className="text-[8px] opacity-80 truncate">{curr.name}</span>
+                        {opt.label}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* units button */}
-                <div className="mt-4">
-                  <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1.5">
-                    Source Fuel Unit
+                {/* Simultaneous calculated conversion results area */}
+                <div className="mt-5 pt-4 border-t border-slate-100/80 space-y-2.5">
+                  <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">
+                    Calculated Conversion Results
                   </span>
-                  <div className="flex gap-1.5">
-                    {Object.values(UNIT_CONFIGS).map((ut) => (
-                      <button
-                        key={ut.id}
-                        onClick={() => setInputUnit(ut.id)}
-                        className={`flex-1 py-1.5 rounded-xl text-center text-xs font-bold transition-colors ${
-                          inputUnit === ut.id 
-                            ? 'bg-slate-900 text-white' 
-                            : 'bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {ut.symbol}
-                      </button>
-                    ))}
+                  <div className="space-y-2">
+                    {/* CAD_L Option */}
+                    <div className={`px-4 py-2.5 rounded-2xl flex items-center justify-between border transition-all ${
+                      selectedOptionId === 'CAD_L' 
+                        ? 'bg-slate-900 text-white border-transparent shadow-xs scale-[1.02]' 
+                        : 'bg-slate-50 text-slate-800 border-slate-100 hover:bg-slate-100/70'
+                    }`}>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold tracking-wide">¢(CAD)/L</span>
+                        <span className={`text-[9px] font-semibold uppercase tracking-wider ${selectedOptionId === 'CAD_L' ? 'text-slate-400' : 'text-slate-400'}`}>
+                          Canada Standard
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono font-bold">
+                          {formatFuelPrice(convertedCAD_L, 'CAD_CENTS')}/L
+                        </span>
+                        {selectedOptionId === 'CAD_L' && (
+                          <span className="text-[8px] bg-white/20 text-white px-2 py-0.5 rounded-md font-bold uppercase tracking-widest leading-none">
+                            Input
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* USD_GAL Option */}
+                    <div className={`px-4 py-2.5 rounded-2xl flex items-center justify-between border transition-all ${
+                      selectedOptionId === 'USD_GAL' 
+                        ? 'bg-slate-900 text-white border-transparent shadow-xs scale-[1.02]' 
+                        : 'bg-slate-50 text-slate-800 border-slate-100 hover:bg-slate-100/70'
+                    }`}>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold tracking-wide">$USD/Gal (US)</span>
+                        <span className={`text-[9px] font-semibold uppercase tracking-wider ${selectedOptionId === 'USD_GAL' ? 'text-slate-400' : 'text-slate-400'}`}>
+                          U.S. Standard
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono font-bold">
+                          {formatFuelPrice(convertedUSD_GAL, 'USD')}/gal
+                        </span>
+                        {selectedOptionId === 'USD_GAL' && (
+                          <span className="text-[8px] bg-white/20 text-white px-2 py-0.5 rounded-md font-bold uppercase tracking-widest leading-none">
+                            Input
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* MXN_L Option */}
+                    <div className={`px-4 py-2.5 rounded-2xl flex items-center justify-between border transition-all ${
+                      selectedOptionId === 'MXN_L' 
+                        ? 'bg-slate-900 text-white border-transparent shadow-xs scale-[1.02]' 
+                        : 'bg-slate-50 text-slate-800 border-slate-100 hover:bg-slate-100/70'
+                    }`}>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold tracking-wide">Mex$/L</span>
+                        <span className={`text-[9px] font-semibold uppercase tracking-wider ${selectedOptionId === 'MXN_L' ? 'text-slate-400' : 'text-slate-400'}`}>
+                          Mexico Standard
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono font-bold">
+                          {formatFuelPrice(convertedMXN_L, 'MXN')}/L
+                        </span>
+                        {selectedOptionId === 'MXN_L' && (
+                          <span className="text-[8px] bg-white/20 text-white px-2 py-0.5 rounded-md font-bold uppercase tracking-widest leading-none">
+                            Input
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* STATUTORY TARGETS CARD */}
-              <div className="p-5 rounded-[2rem] border bg-white border-slate-100 shadow-clean-card space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Target Conversions</span>
-                  <Zap className="h-4 w-4 text-emerald-500" />
-                </div>
-
-                {/* USD/US_GAL */}
-                <div className="flex items-center justify-between bg-[#F8FAFC] p-4 rounded-2xl border border-slate-100/95 hover:bg-slate-50 transition-colors">
-                  <div>
-                    <div className="text-[8px] text-slate-400 uppercase tracking-widest font-bold">Standard U.S. Base</div>
-                    <div className="text-[11px] text-slate-700 font-medium">USD per U.S. Gal</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-base font-bold font-mono text-emerald-600">
-                      {formatFuelPrice(convertedToUSDPerUSGal, 'USD')}/gal
-                    </div>
-                    <div className="text-[9px] text-slate-400 font-mono">USD / U.S. gal</div>
-                  </div>
-                </div>
-
-                {/* CAD_CENTS/L */}
-                <div className="flex items-center justify-between bg-[#F8FAFC] p-4 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-colors">
-                  <div>
-                    <div className="text-[8px] text-slate-400 uppercase tracking-widest font-bold">Canada Standard</div>
-                    <div className="text-[11px] text-slate-700 font-medium">Canadian Cents per Liter</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-base font-bold font-mono text-slate-900">
-                      {formatFuelPrice(convertedToCADCentsPerLiter, 'CAD_CENTS')}/L
-                    </div>
-                    <div className="text-[9px] text-slate-400 font-mono">¢ (CAD) / Liter</div>
-                  </div>
-                </div>
-
-                {/* MXN/L */}
-                <div className="flex items-center justify-between bg-[#F8FAFC] p-4 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-colors">
-                  <div>
-                    <div className="text-[8px] text-slate-400 uppercase tracking-widest font-bold">Mexico Base</div>
-                    <div className="text-[11px] text-slate-700 font-medium">Mexican Pesos per Liter</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-base font-bold font-mono text-blue-600">
-                      {formatFuelPrice(convertedToMXNPerLiter, 'MXN')}/L
-                    </div>
-                    <div className="text-[9px] text-slate-400 font-mono">Mex$ / Liter</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* DUAL SELECTOR COMPONENT */}
-              <div className="p-5 rounded-[2rem] border bg-white border-slate-100 shadow-clean-card space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Custom dual selector</span>
-                  <Sliders className="h-4 w-4 text-slate-500" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[8px] uppercase tracking-wider text-slate-400 font-bold mb-1">Target Currency</label>
-                    <select 
-                      value={targetCurrency}
-                      onChange={(e) => setTargetCurrency(e.target.value as Currency)}
-                      className="w-full text-xs bg-[#F8FAFC] text-slate-800 border border-slate-205 rounded-xl p-2 font-sans focus:outline-none"
-                    >
-                      <option value="USD">U.S. Dollar ($)</option>
-                      <option value="CAD">Canadian Dollar (C$)</option>
-                      <option value="CAD_CENTS">Canadian Cents (¢)</option>
-                      <option value="MXN">Mexican Peso (Mex$)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[8px] uppercase tracking-wider text-slate-400 font-bold mb-1">Target Fuel Unit</label>
-                    <select 
-                      value={targetUnit}
-                      onChange={(e) => setTargetUnit(e.target.value as FuelUnit)}
-                      className="w-full text-xs bg-[#F8FAFC] text-slate-800 border border-slate-205 rounded-xl p-2 font-sans focus:outline-none"
-                    >
-                      <option value="L">Liters (L)</option>
-                      <option value="US_GAL">U.S. Gallons</option>
-                      <option value="IMP_GAL">Imperial Gallons</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="bg-slate-900 text-center py-4 px-3 rounded-2xl mt-4">
-                  <div className="text-[10px] text-slate-405 uppercase tracking-widest font-bold">Custom Conversion Result</div>
-                  <div className="text-2xl font-mono font-light text-white mt-1">
-                    {formatFuelPrice(customConvertedResult, targetCurrency)}
-                    <span className="text-sm font-normal text-slate-400 italic ml-2">
-                      per {UNIT_CONFIGS[targetUnit].symbol}
-                    </span>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* Right side auxiliary stacks */}
             <div className="space-y-6">
-              {renderPresetsSection()}
-              {renderCalculationsSection()}
               {renderMatrixSection()}
-              {renderSandboxSection()}
-              {renderInfoBoxSection()}
             </div>
           </main>
 
           <footer className="max-w-4xl mx-auto px-6 mt-10 text-center text-xs text-slate-400 border-t border-slate-100 pt-8 pb-12 shrink-0">
-            <p className="font-semibold text-slate-605">FuelMath • Borderless Mobile Edition</p>
+            <p className="font-semibold text-slate-605">FuelMath</p>
             <p className="mt-1 text-[10px] text-slate-400 font-light">Optimized viewport layout without outer frames.</p>
           </footer>
         </div>
@@ -1165,173 +848,113 @@ export default function App() {
                       </button>
                     </div>
 
-                    {/* SOURCE CURRENCY SELECTOR */}
+                    {/* Simplified Input Unit/Currency selector */}
                     <div className="mt-4">
                       <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1.5">
-                        Source Currency
+                        Input Format
                       </span>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {Object.values(CURRENCY_CONFIGS).filter(curr => curr.id !== 'CAD').map((curr) => (
+                      <div className="grid grid-cols-3 gap-1.5 animate-fade-in">
+                        {OPTIONS.map((opt) => (
                           <button
-                            key={curr.id}
-                            onClick={() => {
-                              // If setting CAD Cents, default unit is L (standard Canada) over Gallons
-                              setInputCurrency(curr.id);
-                              if (curr.id === 'CAD_CENTS') {
-                                setInputUnit('L');
-                              }
-                            }}
-                            className={`px-2 py-1.5 rounded-xl text-left text-xs flex flex-col justify-between transition-colors ${
-                              inputCurrency === curr.id 
+                            key={opt.id}
+                            onClick={() => setSelectedOptionId(opt.id)}
+                            className={`py-2.5 px-1 rounded-xl text-center text-xs font-bold transition-all ${
+                              selectedOptionId === opt.id 
                                 ? themeStyles.pillActive 
                                 : themeStyles.pillInactive
                             }`}
                           >
-                            <span className="font-bold text-xs">{curr.symbol} ({curr.id === 'CAD_CENTS' ? 'CAD' : curr.id})</span>
-                            <span className="text-[8px] opacity-80 truncate">{curr.name}</span>
+                            {opt.label}
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    {/* SOURCE UNIT SELECTOR */}
-                    <div className="mt-4">
-                      <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1.5">
-                        Source Fuel Unit
+                    {/* Simultaneous calculated conversion results area */}
+                    <div className="mt-4 pt-4 border-t border-slate-100/85 space-y-2">
+                      <span className="block text-[9px] uppercase font-bold tracking-wide text-slate-400 mb-1">
+                        Calculated Conversion Results
                       </span>
-                      <div className="flex gap-1.5">
-                        {Object.values(UNIT_CONFIGS).map((ut) => (
-                          <button
-                            key={ut.id}
-                            onClick={() => setInputUnit(ut.id)}
-                            className={`flex-1 py-1.5 rounded-xl text-center text-xs font-semibold transition-colors ${
-                              inputUnit === ut.id 
-                                ? themeStyles.pillActive 
-                                : themeStyles.pillInactive
-                            }`}
-                          >
-                            {ut.symbol}
-                          </button>
-                        ))}
+                      <div className="space-y-1.5">
+                        {/* CAD_L */}
+                        <div className={`px-3.5 py-2.5 rounded-2xl flex items-center justify-between border transition-all ${
+                          selectedOptionId === 'CAD_L' 
+                            ? `${themeStyles.pillActive} shadow-xs scale-[1.01]` 
+                            : 'bg-slate-50/80 text-slate-800 border-slate-100/80 hover:bg-slate-100/50'
+                        }`}>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold">¢(CAD)/L</span>
+                            <span className={`text-[8px] font-semibold uppercase tracking-wider ${selectedOptionId === 'CAD_L' ? 'text-slate-300' : 'text-slate-400'}`}>
+                              Canada Metric
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-mono font-bold">
+                              {formatFuelPrice(convertedCAD_L, 'CAD_CENTS')}/L
+                            </span>
+                            {selectedOptionId === 'CAD_L' && (
+                              <span className="text-[7px] bg-white/20 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-widest leading-none">
+                                Input
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* USD_GAL */}
+                        <div className={`px-3.5 py-2.5 rounded-2xl flex items-center justify-between border transition-all ${
+                          selectedOptionId === 'USD_GAL' 
+                            ? `${themeStyles.pillActive} shadow-xs scale-[1.01]` 
+                            : 'bg-slate-50/80 text-slate-800 border-slate-100/80 hover:bg-slate-100/50'
+                        }`}>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold">$USD/Gal (US)</span>
+                            <span className={`text-[8px] font-semibold uppercase tracking-wider ${selectedOptionId === 'USD_GAL' ? 'text-slate-300' : 'text-slate-400'}`}>
+                              U.S. Standard
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-mono font-bold">
+                              {formatFuelPrice(convertedUSD_GAL, 'USD')}/gal
+                            </span>
+                            {selectedOptionId === 'USD_GAL' && (
+                              <span className="text-[7px] bg-white/20 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-widest leading-none">
+                                Input
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* MXN_L */}
+                        <div className={`px-3.5 py-2.5 rounded-2xl flex items-center justify-between border transition-all ${
+                          selectedOptionId === 'MXN_L' 
+                            ? `${themeStyles.pillActive} shadow-xs scale-[1.01]` 
+                            : 'bg-slate-50/80 text-slate-800 border-slate-100/80 hover:bg-slate-100/50'
+                        }`}>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold">Mex$/L</span>
+                            <span className={`text-[8px] font-semibold uppercase tracking-wider ${selectedOptionId === 'MXN_L' ? 'text-slate-300' : 'text-slate-400'}`}>
+                              Mexico Standard
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-mono font-bold">
+                              {formatFuelPrice(convertedMXN_L, 'MXN')}/L
+                            </span>
+                            {selectedOptionId === 'MXN_L' && (
+                              <span className="text-[7px] bg-white/20 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-widest leading-none">
+                                Input
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
                   </div>
 
-                  {/* STATUTORY OUTPUT TARGETS COMPLIMENTARY CARD */}
-                  <div className={`p-4 rounded-3xl border ${themeStyles.card} space-y-3`}>
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">
-                        Primary Target Conversions
-                      </span>
-                      <Zap className="h-3 w-3 text-emerald-500" />
-                    </div>
 
-                    {/* Output 1: USD/U.S. Gallon */}
-                    <div className="flex items-center justify-between bg-[#F8FAFC] p-3 rounded-2xl border border-slate-100 shadow-2xs hover:bg-slate-50 transition-colors">
-                      <div>
-                        <div className="text-[8px] text-slate-400 uppercase tracking-widest font-bold">Standard U.S. Base</div>
-                        <div className="text-[11px] text-slate-700 font-medium">USD per U.S. Gal</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-bold font-mono text-emerald-600">
-                          {formatFuelPrice(convertedToUSDPerUSGal, 'USD')}/gal
-                        </div>
-                        <div className="text-[9px] text-slate-400 font-mono">
-                          USD / U.S. gal
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Output 2: CAD/Liter (Cents representation) */}
-                    <div className="flex items-center justify-between bg-[#F8FAFC] p-3 rounded-2xl border border-slate-100 shadow-2xs hover:bg-slate-50 transition-colors">
-                      <div>
-                        <div className="text-[8px] text-slate-400 uppercase tracking-widest font-bold">Canada Standard</div>
-                        <div className="text-[11px] text-slate-700 font-medium">Canadian Cents per Liter</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-bold font-mono text-slate-900">
-                          {formatFuelPrice(convertedToCADCentsPerLiter, 'CAD_CENTS')}/L
-                        </div>
-                        <div className="text-[9px] text-slate-400 font-mono">
-                          ¢ (CAD) / Liter
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Output 3: MXN/Liter */}
-                    <div className="flex items-center justify-between bg-[#F8FAFC] p-3 rounded-2xl border border-slate-100 shadow-2xs hover:bg-slate-50 transition-colors">
-                      <div>
-                        <div className="text-[8px] text-slate-400 uppercase tracking-widest font-bold">Mexico Base</div>
-                        <div className="text-[11px] text-slate-700 font-medium">Mexican Pesos per Liter</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-bold font-mono text-blue-600">
-                          {formatFuelPrice(convertedToMXNPerLiter, 'MXN')}/L
-                        </div>
-                        <div className="text-[9px] text-slate-400 font-mono">
-                          Mex$ / Liter
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* APP CUSTOM PLAYGROUND SELECTOR CARD */}
-                  <div className={`p-4 rounded-3xl border ${themeStyles.card} space-y-3`}>
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">
-                        Custom Dual-Selector
-                      </span>
-                      <Sliders className="h-3.5 w-3.5 text-slate-500" />
-                    </div>
-
-                    <p className="text-[9px] text-slate-400 leading-relaxed">
-                      Configure your custom target currency and fuel unit combinations. Change them instantly below.
-                    </p>
-
-                    {/* Custom selections selectors inline */}
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      <div>
-                        <label className="block text-[8px] uppercase tracking-wider text-slate-400 font-bold mb-1">Target Currency</label>
-                        <select 
-                          value={targetCurrency}
-                          onChange={(e) => setTargetCurrency(e.target.value as Currency)}
-                          className="w-full text-[11px] bg-[#F8FAFC] text-slate-800 border border-slate-205 rounded-xl p-1.5 font-sans focus:outline-none focus:border-slate-800"
-                        >
-                          <option value="USD">U.S. Dollar ($)</option>
-                          <option value="CAD">Canadian Dollar (C$)</option>
-                          <option value="CAD_CENTS">Canadian Cents (¢)</option>
-                          <option value="MXN">Mexican Peso (Mex$)</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-[8px] uppercase tracking-wider text-slate-400 font-bold mb-1">Target Fuel Unit</label>
-                        <select 
-                          value={targetUnit}
-                          onChange={(e) => setTargetUnit(e.target.value as FuelUnit)}
-                          className="w-full text-[11px] bg-[#F8FAFC] text-slate-800 border border-slate-205 rounded-xl p-1.5 font-sans focus:outline-none focus:border-slate-800"
-                        >
-                          <option value="L">Liters (L)</option>
-                          <option value="US_GAL">U.S. Gallons</option>
-                          <option value="IMP_GAL">Imperial Gallons</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Standout Custom Result Contrast Block - matching Clean Minimalism */}
-                    <div className="bg-slate-900 shadow-sm text-center py-3.5 px-3 rounded-2xl mt-2.5 transition-all">
-                      <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Custom Conversion Result</div>
-                      <div className="text-2xl font-mono font-light text-white mt-1">
-                        {formatFuelPrice(customConvertedResult, targetCurrency)}
-                        <span className="text-sm font-normal text-slate-400 italic ml-1.5">
-                          per {UNIT_CONFIGS[targetUnit].symbol}
-                        </span>
-                      </div>
-                    </div>
-
-                  </div>
 
                   {/* BOTTOM REFRESH COMPONENT INTERNAL */}
                   <div className="text-center pt-1.5">
@@ -1366,15 +989,7 @@ export default function App() {
         {/* RIGHT COLUMN: Formula Breakdown, Presets, Settings Console (Span 7) */}
         <section className="lg:col-span-7 space-y-6">
           
-          {renderPresetsSection()}
-
-          {renderCalculationsSection()}
-
           {renderMatrixSection()}
-
-          {renderSandboxSection()}
-
-          {renderInfoBoxSection()}
 
         </section>
 
@@ -1382,8 +997,7 @@ export default function App() {
 
       {/* Footer copyright */}
       <footer className="max-w-7xl mx-auto px-6 mt-20 text-center text-xs text-slate-450 border-t border-slate-100 pt-8 pb-12">
-        <p className="font-medium text-slate-600">Fuel Price Converter • Premium Material You Interoperable Simulated Android Sandbox Environment.</p>
-        <p className="mt-1 text-[10px] text-slate-400 font-light">Built with React, Vite, and tailwindcss. Running in secure containerized sandboxes.</p>
+        <p className="font-medium text-slate-600">Fuel Math</p>
       </footer>
 
     </div>
