@@ -645,8 +645,7 @@ export default function App() {
           </main>
 
           <footer className="max-w-4xl mx-auto px-6 mt-10 text-center text-xs text-slate-400 border-t border-slate-100 pt-8 pb-12 shrink-0">
-            <p className="font-semibold text-slate-605">FuelMath</p>
-            <p className="mt-1 text-[10px] text-slate-400 font-light">Optimized viewport layout without outer frames.</p>
+            <p className="font-semibold text-slate-605">FuelMath &copy; 2026 - All rights reserved.</p>
           </footer>
         </div>
       )}
